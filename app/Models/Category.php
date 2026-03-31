@@ -1,10 +1,8 @@
 <?php
 
 namespace App\Models;
-
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Category extends Model
 {
@@ -14,15 +12,10 @@ class Category extends Model
         'name',
         'description',
         'color',
-        'is_active',
+        'is_active'
     ];
 
-    protected $casts = [
-        'is_active' => 'boolean',
-    ];
-
-    public function plates(): HasMany
-    {
-        return $this->hasMany(Plate::class);
+    public function plats(){
+        return $this->hasMany(Plat::class);
     }
 }

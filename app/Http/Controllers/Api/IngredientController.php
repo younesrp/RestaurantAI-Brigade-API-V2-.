@@ -5,58 +5,135 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Ingredient;
 use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 
 class IngredientController extends Controller
 {
-    public function index(): JsonResponse
+    /**
+     * Display a listing of ingredients.
+     */
+    public function index(Request $request)
     {
-        $ingredients = Ingredient::withCount('plates')->get();
-        return response()->json($ingredients);
+        $ingredients = Ingredient::with('plates')->get();
+        
+        return response()->json([
+            'success' => true,
+            'data' => $ingredients
+        ]);
     }
 
-    public function store(Request $request): JsonResponse
+    /**
+     * Display the specified ingredient.
+     */
+    public function show($id)
     {
-        $this->authorize('create', Ingredient::class);
+        $ingredient = Ingredient::with('plates')->find($id);
         
+        if (!$ingredient) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ingredient not found'
+            ], 404);
+        }
+        
+        return response()->json([
+            'success' => true,
+            'data' => $ingredient
+        ]);
+    }
+
+    /**
+     * Store a newly created ingredient (admin only).
+     */
+    public function store(Request $request)
+    {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|unique:ingredients',
-            'tags' => 'array',
-            'tags.*' => 'in:contains_meat,contains_sugar,contains_cholesterol,contains_gluten,contains_lactose',
+            'name' => 'required|string|max:255|unique:ingredients',
+            'tags' => 'sometimes|array',
+            'tags.*' => 'string|in:contains_meat,contains_sugar,contains_cholesterol,contains_gluten,contains_lactose'
         ]);
 
         if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
         }
 
         $ingredient = Ingredient::create($request->all());
-        return response()->json($ingredient, 201);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Ingredient created successfully',
+            'data' => $ingredient
+        ], 201);
     }
 
-    public function update(Request $request, Ingredient $ingredient): JsonResponse
+    /**
+     * Update the specified ingredient (admin only).
+     */
+    public function update(Request $request, $id)
     {
-        $this->authorize('update', $ingredient);
-        
+        $ingredient = Ingredient::find($id);
+
+        if (!$ingredient) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ingredient not found'
+            ], 404);
+        }
+
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|unique:ingredients,name,' . $ingredient->id,
-            'tags' => 'array',
-            'tags.*' => 'in:contains_meat,contains_sugar,contains_cholesterol,contains_gluten,contains_lactose',
+            'name' => 'sometimes|string|max:255|unique:ingredients,name,' . $id,
+            'tags' => 'sometimes|array',
+            'tags.*' => 'string|in:contains_meat,contains_sugar,contains_cholesterol,contains_gluten,contains_lactose'
         ]);
 
         if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
         }
 
         $ingredient->update($request->all());
-        return response()->json($ingredient);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Ingredient updated successfully',
+            'data' => $ingredient
+        ]);
     }
 
-    public function destroy(Ingredient $ingredient): JsonResponse
+    /**
+     * Remove the specified ingredient (admin only).
+     */
+    public function destroy($id)
     {
-        $this->authorize('delete', $ingredient);
-        
+        $ingredient = Ingredient::find($id);
+
+        if (!$ingredient) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ingredient not found'
+            ], 404);
+        }
+
+        // Check if ingredient is associated with plates
+        if ($ingredient->plates()->count() > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete ingredient associated with plates'
+            ], 400);
+        }
+
         $ingredient->delete();
-        return response()->json(null, 204);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Ingredient deleted successfully'
+        ]);
     }
 }

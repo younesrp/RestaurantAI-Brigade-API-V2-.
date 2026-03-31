@@ -3,66 +3,117 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Plate;
 use App\Models\Recommendation;
-use App\Jobs\AnalyzePlateRecommendation;
+use App\Models\Plat;
+use App\Jobs\AnalyzePlateCompatibility;
 use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 
 class RecommendationController extends Controller
 {
-    public function analyze(Request $request, Plate $plate): JsonResponse
+    /**
+     * Display a listing of recommendations for the authenticated user.
+     */
+    public function index(Request $request)
     {
-        $existingRecommendation = Recommendation::where('user_id', $request->user()->id)
-            ->where('plate_id', $plate->id)
-            ->first();
-
-        if ($existingRecommendation && $existingRecommendation->status === 'processing') {
-            return response()->json(['message' => 'Analysis already in progress'], 409);
-        }
-
-        $recommendation = Recommendation::updateOrCreate(
-            [
-                'user_id' => $request->user()->id,
-                'plate_id' => $plate->id,
-            ],
-            [
-                'score' => 0,
-                'label' => 'Processing...',
-                'warning_message' => null,
-                'status' => 'processing',
-            ]
-        );
-
-        AnalyzePlateRecommendation::dispatch($recommendation);
-
-        return response()->json([
-            'message' => 'Analysis started',
-            'recommendation_id' => $recommendation->id,
-        ], 202);
-    }
-
-    public function index(Request $request): JsonResponse
-    {
-        $recommendations = Recommendation::where('user_id', $request->user()->id)
-            ->with(['plate.category', 'plate.ingredients'])
-            ->orderBy('created_at', 'desc')
+        $recommendations = Recommendation::where('user_id', Auth::id())
+            ->with('plate')
+            ->orderBy('score', 'desc')
             ->get();
-
-        return response()->json($recommendations);
+        
+        return response()->json([
+            'success' => true,
+            'data' => $recommendations
+        ]);
     }
 
-    public function show(Request $request, Plate $plate): JsonResponse
+    /**
+     * Display a specific recommendation.
+     */
+    public function show($plate_id, Request $request)
     {
-        $recommendation = Recommendation::where('user_id', $request->user()->id)
-            ->where('plate_id', $plate->id)
-            ->with(['plate.category', 'plate.ingredients'])
+        $recommendation = Recommendation::where('user_id', Auth::id())
+            ->where('plate_id', $plate_id)
+            ->with('plate')
             ->first();
 
         if (!$recommendation) {
-            return response()->json(['message' => 'Recommendation not found'], 404);
+            return response()->json([
+                'success' => false,
+                'message' => 'Recommendation not found'
+            ], 404);
+        }
+        
+        return response()->json([
+            'success' => true,
+            'data' => $recommendation
+        ]);
+    }
+
+    /**
+     * @OA\Post(
+     * path="/api/recommendations/analyze/{plate_id}",
+     * operationId="analyzePlate",
+     * tags={"Recommendations"},
+     * summary="Lancer l'analyse nutritionnelle d'un plat",
+     * description="Envoie un plat à l'IA pour calculer le score de compatibilité",
+     * @OA\Parameter(
+     * name="plate_id",
+     * in="path",
+     * required=true,
+     * @OA\Schema(type="integer")
+     * ),
+     * @OA\Response(
+     * response=200,
+     * description="Analyse réussie"
+     * )
+     * )
+     */
+    
+    public function analyzePlate($plate_id, Request $request)
+    {
+        $plate = Plat::find($plate_id);
+        
+        if (!$plate) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Plate not found'
+            ], 404);
         }
 
-        return response()->json($recommendation);
+        $user = Auth::user();
+        $userRestrictions = $user->dietary_tags ?? [];
+
+        // Create initial recommendation as "processing"
+        $recommendation = Recommendation::updateOrCreate(
+            [
+                'user_id' => Auth::id(),
+                'plate_id' => $plate_id,
+            ],
+            [
+                'status' => 'processing',
+                'score' => 0,
+                'label' => 'Analyzing...',
+                'warning_message' => null,
+            ]
+        );
+
+        // Dispatch AI analysis job
+        AnalyzePlateCompatibility::dispatch(
+            Auth::id(),
+            $plate_id,
+            [
+                'name' => $plate->name,
+                'description' => $plate->description,
+                'price' => $plate->price
+            ],
+            $userRestrictions
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'AI analysis started',
+            'data' => $recommendation
+        ]);
     }
 }

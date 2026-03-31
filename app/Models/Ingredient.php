@@ -2,25 +2,21 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Ingredient extends Model
 {
-    use HasFactory;
+    protected $fillable = ['name','tags'];
 
-    protected $fillable = [
-        'name',
-        'tags',
-    ];
-
-    protected $casts = [
-        'tags' => 'array',
-    ];
-
-    public function plates(): BelongsToMany
+    protected function casts(): array
     {
-        return $this->belongsToMany(Plate::class);
+        return [
+            'tags' => 'array',
+        ];
+    }
+
+    public function plates()
+    {
+        return $this->belongsToMany(Plat::class, 'plate_ingredient', 'ingredient_id', 'plate_id');
     }
 }

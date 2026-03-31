@@ -5,72 +5,157 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 
 class CategoryController extends Controller
 {
-    public function index(): JsonResponse
+    /**
+     * Display a listing of categories.
+     */
+    public function index(Request $request)
     {
-        $categories = Category::withCount('plates')->get();
-        return response()->json($categories);
+        $categories = Category::withCount('plats')->get();
+        
+        return response()->json([
+            'success' => true,
+            'data' => $categories
+        ]);
     }
 
-    public function store(Request $request): JsonResponse
+    /**
+     * Display the specified category.
+     */
+    public function show($id)
     {
-        $this->authorize('create', Category::class);
+        $category = Category::with('plats')->find($id);
         
+        if (!$category) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Category not found'
+            ], 404);
+        }
+        
+        return response()->json([
+            'success' => true,
+            'data' => $category
+        ]);
+    }
+
+    /**
+     * Store a newly created category (admin only).
+     */
+    public function store(Request $request)
+    {
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:100|unique:categories',
             'description' => 'nullable|string',
             'color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
-            'is_active' => 'boolean',
+            'is_active' => 'sometimes|boolean'
         ]);
 
         if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
         }
 
         $category = Category::create($request->all());
-        return response()->json($category, 201);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category created successfully',
+            'data' => $category
+        ], 201);
     }
 
-    public function show(Category $category): JsonResponse
+    /**
+     * Update the specified category (admin only).
+     */
+    public function update(Request $request, $id)
     {
-        $category->load('plates');
-        return response()->json($category);
-    }
+        $category = Category::find($id);
 
-    public function update(Request $request, Category $category): JsonResponse
-    {
-        $this->authorize('update', $category);
-        
+        if (!$category) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Category not found'
+            ], 404);
+        }
+
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:100|unique:categories,name,' . $category->id,
+            'name' => 'sometimes|string|max:100|unique:categories,name,' . $id,
             'description' => 'nullable|string',
             'color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
-            'is_active' => 'boolean',
+            'is_active' => 'sometimes|boolean'
         ]);
 
         if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
         }
 
         $category->update($request->all());
-        return response()->json($category);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category updated successfully',
+            'data' => $category
+        ]);
     }
 
-    public function destroy(Category $category): JsonResponse
+    /**
+     * Remove the specified category (admin only).
+     */
+    public function destroy($id)
     {
-        $this->authorize('delete', $category);
-        
+        $category = Category::find($id);
+
+        if (!$category) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Category not found'
+            ], 404);
+        }
+
+        // Check if category has associated plates
+        if ($category->plats()->count() > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete category with associated plates'
+            ], 400);
+        }
+
         $category->delete();
-        return response()->json(null, 204);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category deleted successfully'
+        ]);
     }
 
-    public function plates(Category $category): JsonResponse
+    /**
+     * Get plates for a specific category.
+     */
+    public function plates($id)
     {
-        $plates = $category->plates()->with('ingredients')->get();
-        return response()->json($plates);
+        $category = Category::with('plats')->find($id);
+
+        if (!$category) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Category not found'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $category->plats
+        ]);
     }
 }
